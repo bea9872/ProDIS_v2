@@ -1,4 +1,4 @@
-unction omegas = MRI_quartic_solver(params, kz)
+function omegas = MRI_quartic_solver(params, kz)
 % MRI_quartic_solver
 % Solve the axisymmetric MRI quartic dispersion relation for vertical B0.
 %

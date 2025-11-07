@@ -1,10 +1,7 @@
 % ProDIS_main.m
 % Main entry point for ProDIS_v2 (placed in src/)
-% Usage: open MATLAB, set current folder to ProDIS_v2/src and run:
 % ProDIS_main
 %
-% This script configures paths robustly (works even if you launch from elsewhere)
-% and offers a simple menu to run example cases in src/examples.
 
 clear; clc; close all;
 
