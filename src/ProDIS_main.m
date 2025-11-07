@@ -1,27 +1,51 @@
-% ==============================================================
-% ProDIS_v2: Protoplanetary Disk Instability Solver
-% Main launcher for MRI and hydrodynamic instability solvers
-% ==============================================================
+% ProDIS_main.m
+% Main entry point for ProDIS_v2 (placed in src/)
+% Usage: open MATLAB, set current folder to ProDIS_v2/src and run:
+% ProDIS_main
+%
+% This script configures paths robustly (works even if you launch from elsewhere)
+% and offers a simple menu to run example cases in src/examples.
+
 clear; clc; close all;
 
-addpath('src'); addpath('examples'); addpath('figures'); addpath('docs');
+% ---------------------------
+% Path setup (robust)
+% ---------------------------
+% this file is inside .../ProDIS_v2/src
+thisFile = mfilename('fullpath');
+srcDir = fileparts(thisFile); % path to src
+rootDir = fileparts(srcDir); % path to ProDIS_v2
 
-disp('=== ProDIS_v2: Protoplanetary Disk Instability Solver ===');
-disp('Select mode: 1 = MRI Ideal, 2 = MRI Non-Ideal, 3 = HD Cooling');
-mode = input('Enter mode number: ');
+% set current folder to srcDir (ensures relative calls work)
+cd(srcDir);
 
-switch mode
+% add relevant paths
+addpath(srcDir);
+addpath(fullfile(srcDir,'examples'));
+
+fprintf('[ProDIS] Root: %s\n', rootDir);
+fprintf('[ProDIS] Src: %s\n', srcDir);
+
+% ---------------------------
+% Simple menu
+% ---------------------------
+fprintf('\nProDIS v2 — select example to run:\n');
+fprintf(' 1) MRI ideal benchmark\n');
+fprintf(' 2) MRI non-ideal sweep (Ohmic + Hall placeholder)\n');
+fprintf(' 3) Hydrodynamic cooling sweep (VSI-like)\n');
+fprintf(' 4) Generate all example figures\n');
+fprintf(' 0) Exit\n');
+choice = input('Enter choice [1-4]: ');
+
+switch choice
     case 1
-        disp('Running Ideal MRI Benchmark...');
-        run('examples/MRI_ideal_run.m');
+        run(fullfile('examples','MRI_ideal_run.m'));
     case 2
-        disp('Running Non-Ideal MRI Benchmark...');
-        run('examples/MRI_nonideal_run.m');
+        run(fullfile('examples','MRI_nonideal_run.m'));
     case 3
-        disp('Running Hydrodynamic Cooling Instability...');
-        run('examples/HD_cooling_run.m');
+        run(fullfile('examples','HD_cooling_run.m'));
+    case 4
+        run(fullfile('examples','generate_all_figures.m'));
     otherwise
-        disp('Invalid mode.');
+        fprintf('Exit.\n');
 end
-
-disp('=== Simulation complete ===');

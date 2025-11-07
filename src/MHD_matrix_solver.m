@@ -1,101 +1,85 @@
-% MHD_matrix_solver.m
-% Build linear operator A for local incompressible MHD in shearing box
-% State vector: [vx; vy; vz; bx; by; bz]
+function omegas = MHD_matrix_solver(params, kz)
+% MHD_matrix_solver
+% Build and solve the linear 6x6 matrix for incompressible local MHD
+% State vector: [vx; vy; vz; bx; by; bz] (Fourier modes ~ exp(i k·x - i omega t))
 %
-% Usage:
-% A = MHD_matrix_solver(Omega, q, rho0, B0, kx, ky, kz, eta)
+% Signature:
+% omegas = MHD_matrix_solver(params, kz)
+% If kz is vector length N, returns 6xN matrix of eigenvalues (omega).
 %
-% Notes:
-% - Axisymmetric typical use: ky = 0, ky small for non-axisymmetric
-% - Incompressibility enforced approximately by projecting pressure gradient
-% - Resistivity eta acts as -eta*k^2 on magnetic components
+% Inputs params: Omega, q, rho0, B0, kx (default 0), ky (default 0), eta (default 0), nu (default small)
+% Output: omegas (6 x N) complex
 
-function A = MHD_matrix_solver(Omega, q, rho0, B0, kx, ky, kz, eta)
-if nargin < 9
-    eta = 0;
-end
-% derived
-k2 = kx^2 + ky^2 + kz^2;
-kvec = [kx; ky; kz];
+if ~isfield(params,'Omega'); error('params.Omega missing'); end
+if ~isfield(params,'B0'); params.B0 = 0; end
+if ~isfield(params,'rho0'); params.rho0 = 1; end
+if ~isfield(params,'q'); params.q = 1.5; end
+if ~isfield(params,'kx'); params.kx = 0; end
+if ~isfield(params,'ky'); params.ky = 0; end
+if ~isfield(params,'eta'); params.eta = 0; end
+if ~isfield(params,'nu'); params.nu = 1e-6; end
 
-% Alfvén speed (mu0 normalized out; assume units where mu0=1)
-vA = B0 / sqrt(rho0);
+Omega = params.Omega; q = params.q; rho0 = params.rho0;
+B0 = params.B0; kx = params.kx; ky = params.ky; eta = params.eta; nu = params.nu;
 
-% indices
-IVX = 1; IVY = 2; IVZ = 3; IBX = 4; IBY = 5; IBZ = 6;
+kz_vec = kz(:).';
+nK = numel(kz_vec);
+omegas = zeros(6, nK);
 
-A = zeros(6,6);
-
-% ----- Momentum equations (linearized) -----
-% dv/dt = 2 Omega x v + q Omega vx ey - i k p / rho + (i (k·B0) b)/rho
-% in Fourier space pressure term ~ -i k (p)/rho; eliminate p by projection:
-% projection operator P_ij = delta_ij - k_i k_j / k^2
-% so effective pressure gradient is removed by applying P to RHS
-% We'll assemble the momentum forcing Fm = Coriolis + Lorentz and then apply P.
-
-% Coriolis and shear terms (Coriolis: 2 Omega cross v; tidal shear term in vy)
-% dvx/dt <- 2 Omega vy
-A(IVX, IVY) = 2*Omega;
-% dvy/dt <- -(2 - q) Omega vx
-A(IVY, IVX) = -(2 - q)*Omega;
-% dvz no direct coriolis-shear linear term apart from pressure projection
-
-% Lorentz force terms: (1/rho) (i k x (B0 x b)?) Equivalent to i (k·B0) b / rho - i k (B0·b)/rho
-% For uniform vertical B0 = (0,0,B0): k·B0 = kz*B0
-% So Lorentz approximate contribution to dv/dt: i*kz*B0/rho * b - i*k*(B0*b)/rho
-% Implement a practical simplified operator that captures main coupling:
-% dv_i/dt += i*(kz*B0/rho0) * b_i - i*(k_i / k2)*(kz*B0/rho0)*(k·b)
-% Note: this mimics projection after pressure elimination.
-
-coeff = 1i * kz * B0 / rho0; % common factor
-for vi = 1:3
-    for bi = 1:3
-        % direct coupling
-        A(vi, 3+bi) = A(vi, 3+bi) + coeff * (vi==bi);
+for idx = 1:nK
+    kz0 = kz_vec(idx);
+    kvec = [kx; ky; kz0];
+    k2 = sum(kvec.^2);
+    if k2 == 0
+        omegas(:,idx) = NaN;
+        continue;
     end
-end
-% subtract projected parallel part: -i*(k_i/k2)*(k·b)*coeff
-% implement - (k_i/k2) * coeff * (k · b) coupling to every b component
-for vi = 1:3
-    for bi = 1:3
-        A(vi, 3+bi) = A(vi, 3+bi) - (kvec(vi)/k2) * coeff * kvec(bi);
+    vA = B0 / sqrt(rho0);
+
+    % Build 6x6 linear operator L such that dX/dt = L*X and eigenvalues are lambda.
+    % We use temporal convention exp(-i omega t) -> eigenvalues are -i*omega if operator used in that form.
+    % For simplicity we build operator as i*omega * X = M * X and compute eigenvalues accordingly.
+    % Here we will build A so that dX/dt = A*X, then eig(A) gives lambda where solution ~ exp(lambda t).
+    % To map to omega: omega = -i * lambda. We will return omegas = -1i * lambda.
+
+    A = zeros(6,6);
+
+    % Indices
+    IVX=1; IVY=2; IVZ=3; IBX=4; IBY=5; IBZ=6;
+
+    % Coriolis & shear (momentum)
+    A(IVX, IVY) = 2*Omega;
+    A(IVY, IVX) = -(2 - q)*Omega;
+
+    % Lorentz force approx: (i k·B0) b / rho - projection term for pressure
+    % For vertical field B0 e_z:
+    % coupling factor = i * kz0 * B0 / rho0
+    coeff = 1i * kz0 * B0 / rho0;
+    % momentum <- b
+    A(IVX, IBX) = A(IVX, IBX) + coeff;
+    A(IVY, IBY) = A(IVY, IBY) + coeff;
+    A(IVZ, IBZ) = A(IVZ, IBZ) + coeff;
+
+    % Induction: db/dt = i (k·B0) v - q Omega b_x e_y - eta k^2 b
+    A(IBX, IVX) = 1i * kz0 * B0;
+    A(IBY, IVY) = 1i * kz0 * B0;
+    A(IBZ, IVZ) = 1i * kz0 * B0;
+    A(IBY, IBX) = A(IBY, IBX) - q * Omega; % shear stretch
+
+    % Resistivity damping
+    if eta > 0
+        A(IBX, IBX) = A(IBX, IBX) - eta * k2;
+        A(IBY, IBY) = A(IBY, IBY) - eta * k2;
+        A(IBZ, IBZ) = A(IBZ, IBZ) - eta * k2;
     end
+
+    % small viscous damping on velocities
+    A(IVX, IVX) = A(IVX, IVX) - nu * k2;
+    A(IVY, IVY) = A(IVY, IVY) - nu * k2;
+    A(IVZ, IVZ) = A(IVZ, IVZ) - nu * k2;
+
+    % compute eigenvalues of A (time-evolution operator), then convert to omega
+    lambda = eig(A);
+    omegas(:,idx) = -1i * lambda; % omega = -i * lambda
 end
-
-% ----- Induction equations (linearized) -----
-% db/dt = i (k·B0) v - q Omega b_x e_y - eta k^2 b
-% For vertical B0 only, (k·B0) = kz*B0 -> coupling i kz B0 v
-% Shear term: -q Omega b_x contributes to db_y/dt
-
-for bi = 1:3
-    for vi = 1:3
-        A(3+bi, vi) = 1i * kz * B0 * (bi==vi);
-    end
-end
-% shear term (stretching of field): db_y/dt <- - q Omega b_x
-A(IBY, IBX) = - q * Omega;
-
-% Resistive damping on magnetic components
-if eta > 0
-    A(IBX, IBX) = A(IBX, IBX) - eta * k2;
-    A(IBY, IBY) = A(IBY, IBY) - eta * k2;
-    A(IBZ, IBZ) = A(IBZ, IBZ) - eta * k2;
-end
-
-% ----- Small viscous damping for velocity (numerical) -----
-nu = 1e-6;
-if k2>0
-    damp = -nu * k2;
-    A(IVX, IVX) = A(IVX, IVX) + damp;
-    A(IVY, IVY) = A(IVY, IVY) + damp;
-    A(IVZ, IVZ) = A(IVZ, IVZ) + damp;
-end
-
-% ----- Notes -----
-% - This operator is practical and captures key couplings (Coriolis, magnetic tension,
-% shear stretching, resistivity). It is suitable for parameter scans and eigenvalue analysis.
-% - For publication-grade quantitative work, users should carefully compare results
-% with the analytic quartic dispersion relation (axisymmetric case) and, if needed,
-% derive the full linear operator including pressure elimination analytically.
-
 end
